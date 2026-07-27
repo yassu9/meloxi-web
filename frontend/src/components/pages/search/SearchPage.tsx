@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Search as SearchIcon, Loader2, X } from "lucide-react";
-import { useSearch, useNavigate } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { CardGrid, CardRow } from "@/components/cards/CardRow";
 import { MusicCard } from "@/components/cards/MusicCard";
@@ -14,7 +14,6 @@ import type { Track } from "@/types/music";
 const trending = ["Arijit Singh", "Lofi Beats", "Coldplay", "Late night jazz", "Dua Lipa", "Bollywood Top 50"];
 
 export function SearchPage() {
-  const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as { q?: string };
   const initialQ = searchParams?.q || "";
 
@@ -23,28 +22,12 @@ export function SearchPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const paramQ = searchParams?.q || "";
-    if (paramQ !== q) {
-      setQ(paramQ);
+    if (searchParams?.q && searchParams.q !== q) {
+      setQ(searchParams.q);
     }
   }, [searchParams?.q]);
 
   const query = q.trim();
-
-  const handleUpdateQuery = (val: string) => {
-    setQ(val);
-    const trimmed = val.trim();
-    if (trimmed) {
-      navigate({ to: "/search", search: { q: trimmed }, replace: true });
-    } else {
-      navigate({ to: "/search", search: {}, replace: true });
-    }
-  };
-
-  const handleSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    handleUpdateQuery(q);
-  };
 
   useEffect(() => {
     if (!query) {
@@ -78,6 +61,10 @@ export function SearchPage() {
     };
   }, [query]);
 
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+  };
+
   const match = <T extends { name?: string; title?: string; artistName?: string }>(x: T) =>
     query ? `${x.name ?? ""} ${x.title ?? ""} ${x.artistName ?? ""}`.toLowerCase().includes(query.toLowerCase()) : false;
 
@@ -101,12 +88,12 @@ export function SearchPage() {
             {loading ? <Loader2 className="size-5 text-primary animate-spin" /> : <SearchIcon className="size-5 text-muted-foreground shrink-0" />}
             <input
               value={q}
-              onChange={(e) => handleUpdateQuery(e.target.value)}
+              onChange={(e) => setQ(e.target.value)}
               placeholder="Search songs, artists, YouTube or JioSaavn links..."
               className="flex-1 bg-transparent outline-none text-base placeholder:text-muted-foreground"
             />
             {q && (
-              <button type="button" onClick={() => handleUpdateQuery("")} className="text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => setQ("")} className="text-muted-foreground hover:text-foreground">
                 <X className="size-5" />
               </button>
             )}
@@ -118,7 +105,7 @@ export function SearchPage() {
             <CardRow title="Trending searches">
               <div className="flex flex-wrap gap-2">
                 {trending.map((t) => (
-                  <button key={t} type="button" onClick={() => handleUpdateQuery(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
+                  <button key={t} type="button" onClick={() => setQ(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
                     {t}
                   </button>
                 ))}
@@ -127,7 +114,7 @@ export function SearchPage() {
             <CardRow title="Top Categories">
               <div className="flex flex-wrap gap-2">
                 {["Hindi Pop", "Punjabi Wave", "EDM Dance", "Ambient Flow", "Rock Classics"].map((t) => (
-                  <button key={t} type="button" onClick={() => handleUpdateQuery(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
+                  <button key={t} type="button" onClick={() => setQ(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
                     {t}
                   </button>
                 ))}

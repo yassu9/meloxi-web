@@ -15,7 +15,9 @@ export function Header() {
   const [query, setQuery] = useState(searchParams?.q || "");
 
   useEffect(() => {
-    setQuery(searchParams?.q || "");
+    if (searchParams?.q) {
+      setQuery(searchParams.q);
+    }
   }, [searchParams?.q]);
 
   useEffect(() => {
@@ -37,23 +39,20 @@ export function Header() {
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const trimmed = query.trim();
-    if (trimmed) {
-      navigate({ to: "/search", search: { q: trimmed }, replace: true });
-    } else {
-      navigate({ to: "/search" });
+    if (pathname !== "/search") {
+      const trimmed = query.trim();
+      if (trimmed) {
+        navigate({ to: "/search", search: { q: trimmed } });
+      } else {
+        navigate({ to: "/search" });
+      }
     }
   };
 
   const handleInputChange = (val: string) => {
     setQuery(val);
-    if (pathname === "/search") {
-      const trimmed = val.trim();
-      if (trimmed) {
-        navigate({ to: "/search", search: { q: trimmed }, replace: true });
-      } else {
-        navigate({ to: "/search", search: {}, replace: true });
-      }
+    if (pathname !== "/search" && val.trim().length > 0) {
+      navigate({ to: "/search" });
     }
   };
 
