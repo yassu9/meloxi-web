@@ -28,14 +28,17 @@ export function mapBackendTrack(raw: any): Track {
   } as Track & { _queue_id?: string; _playback_id?: string; web_url?: string };
 }
 
-export async function searchTracks(query: string, limit = 15): Promise<Track[]> {
+export async function searchTracks(query: string, limit = 15, signal?: AbortSignal): Promise<Track[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
   try {
-    const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+    const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(trimmed)}&limit=${limit}`, { signal });
     if (!res.ok) return [];
     const data = await res.json();
     const items = data.items || [];
     return items.map(mapBackendTrack);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.name === "AbortError") return [];
     console.error("Failed to search tracks:", err);
     return [];
   }

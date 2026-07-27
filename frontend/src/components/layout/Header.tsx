@@ -15,9 +15,7 @@ export function Header() {
   const [query, setQuery] = useState(searchParams?.q || "");
 
   useEffect(() => {
-    if (typeof searchParams?.q === "string") {
-      setQuery(searchParams.q);
-    }
+    setQuery(searchParams?.q || "");
   }, [searchParams?.q]);
 
   useEffect(() => {
@@ -31,14 +29,31 @@ export function Header() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const handleInputChange = (val: string) => {
-    setQuery(val);
-    navigate({ to: "/search", search: { q: val }, replace: true });
-  };
-
   const handleInputFocus = () => {
     if (pathname !== "/search") {
-      navigate({ to: "/search", search: { q: query } });
+      navigate({ to: "/search" });
+    }
+  };
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = query.trim();
+    if (trimmed) {
+      navigate({ to: "/search", search: { q: trimmed }, replace: true });
+    } else {
+      navigate({ to: "/search" });
+    }
+  };
+
+  const handleInputChange = (val: string) => {
+    setQuery(val);
+    if (pathname === "/search") {
+      const trimmed = val.trim();
+      if (trimmed) {
+        navigate({ to: "/search", search: { q: trimmed }, replace: true });
+      } else {
+        navigate({ to: "/search", search: {}, replace: true });
+      }
     }
   };
 
@@ -53,8 +68,10 @@ export function Header() {
           <button onClick={() => router.history.forward()} className="grid size-9 place-items-center rounded-full bg-black/40 hover:bg-black/60"><ChevronRight className="size-4" /></button>
         </div>
         <div className="flex-1 max-w-xl">
-          <div className="flex items-center gap-2 rounded-full bg-surface-2/80 border border-border px-4 h-10 focus-within:border-primary/60 transition-colors cursor-pointer">
-            <Search className="size-4 text-muted-foreground shrink-0" />
+          <form onSubmit={handleSubmit} className="flex items-center gap-2 rounded-full bg-surface-2/80 border border-border px-4 h-10 focus-within:border-primary/60 transition-colors">
+            <button type="button" onClick={() => handleSubmit()} className="text-muted-foreground shrink-0 hover:text-foreground">
+              <Search className="size-4" />
+            </button>
             <input
               ref={inputRef}
               value={query}
@@ -64,7 +81,7 @@ export function Header() {
               className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
             />
             <kbd className="hidden md:inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">⌘K</kbd>
-          </div>
+          </form>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button className="grid size-9 place-items-center rounded-full hover:bg-white/5"><Sun className="size-4" /></button>

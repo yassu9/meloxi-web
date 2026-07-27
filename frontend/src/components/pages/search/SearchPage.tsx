@@ -23,8 +23,9 @@ export function SearchPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (typeof searchParams?.q === "string" && searchParams.q !== q) {
-      setQ(searchParams.q);
+    const paramQ = searchParams?.q || "";
+    if (paramQ !== q) {
+      setQ(paramQ);
     }
   }, [searchParams?.q]);
 
@@ -32,7 +33,17 @@ export function SearchPage() {
 
   const handleUpdateQuery = (val: string) => {
     setQ(val);
-    navigate({ to: "/search", search: { q: val }, replace: true });
+    const trimmed = val.trim();
+    if (trimmed) {
+      navigate({ to: "/search", search: { q: trimmed }, replace: true });
+    } else {
+      navigate({ to: "/search", search: {}, replace: true });
+    }
+  };
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    handleUpdateQuery(q);
   };
 
   useEffect(() => {
@@ -42,19 +53,29 @@ export function SearchPage() {
       return;
     }
 
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await searchTracks(query, 18);
-        setApiResults(res);
-      } catch (err) {
-        console.error("Search error:", err);
+        const res = await searchTracks(query, 18, controller.signal);
+        if (!controller.signal.aborted) {
+          setApiResults(res);
+        }
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          console.error("Search error:", err);
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [query]);
 
   const match = <T extends { name?: string; title?: string; artistName?: string }>(x: T) =>
@@ -76,8 +97,8 @@ export function SearchPage() {
     <PageTransition>
       <div className="mx-auto max-w-[1800px] px-4 lg:px-8 py-6 space-y-8">
         <div className="relative">
-          <div className="glass flex items-center gap-3 rounded-2xl px-5 h-14 border border-white/10 shadow-card focus-within:border-primary/60 transition-colors">
-            {loading ? <Loader2 className="size-5 text-primary animate-spin" /> : <SearchIcon className="size-5 text-muted-foreground" />}
+          <form onSubmit={handleSubmit} className="glass flex items-center gap-3 rounded-2xl px-5 h-14 border border-white/10 shadow-card focus-within:border-primary/60 transition-colors">
+            {loading ? <Loader2 className="size-5 text-primary animate-spin" /> : <SearchIcon className="size-5 text-muted-foreground shrink-0" />}
             <input
               value={q}
               onChange={(e) => handleUpdateQuery(e.target.value)}
@@ -85,11 +106,11 @@ export function SearchPage() {
               className="flex-1 bg-transparent outline-none text-base placeholder:text-muted-foreground"
             />
             {q && (
-              <button onClick={() => handleUpdateQuery("")} className="text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => handleUpdateQuery("")} className="text-muted-foreground hover:text-foreground">
                 <X className="size-5" />
               </button>
             )}
-          </div>
+          </form>
         </div>
 
         {!query && (
@@ -97,7 +118,7 @@ export function SearchPage() {
             <CardRow title="Trending searches">
               <div className="flex flex-wrap gap-2">
                 {trending.map((t) => (
-                  <button key={t} onClick={() => handleUpdateQuery(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
+                  <button key={t} type="button" onClick={() => handleUpdateQuery(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
                     {t}
                   </button>
                 ))}
@@ -106,7 +127,7 @@ export function SearchPage() {
             <CardRow title="Top Categories">
               <div className="flex flex-wrap gap-2">
                 {["Hindi Pop", "Punjabi Wave", "EDM Dance", "Ambient Flow", "Rock Classics"].map((t) => (
-                  <button key={t} onClick={() => handleUpdateQuery(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
+                  <button key={t} type="button" onClick={() => handleUpdateQuery(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
                     {t}
                   </button>
                 ))}
