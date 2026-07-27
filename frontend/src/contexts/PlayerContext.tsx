@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Track, LyricLine } from "@/types/music";
 import { tracks as seedTracks } from "@/data";
 import {
@@ -109,7 +109,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
 
     const onError = (e: any) => {
-      console.warn("Audio stream notice:", e);
+      // Clean safe log without object serialization loops
+      if (e && e.type) {
+        console.warn("Audio element notice:", e.type);
+      }
     };
 
     audio.addEventListener("timeupdate", onTimeUpdate);
@@ -123,6 +126,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.pause();
     };
   }, [repeat]);
+
+  const activeSid = useCallback(() => sessionIdRef.current || sessionId, [sessionId]);
+
+  const updateStateFromSnapshot = useCallback((snap: any) => {
+    if (!snap) return;
+    if (snap.current) {
+      const trk = mapBackendTrack(snap.current);
+      setCurrentTrack((prev) => {
+        if (!prev) return trk;
+        const isSameTrack = prev.id === trk.id || (prev._queue_id && prev._queue_id === trk._queue_id) || (prev.title === trk.title && prev.artistName === trk.artistName);
+        return isSameTrack ? prev : trk;
+      });
+    }
+    if (snap.queue && Array.isArray(snap.queue)) {
+      const newQueue = snap.queue.map(mapBackendTrack);
+      setQueue((prev) => {
+        if (prev.length === newQueue.length && prev.every((t, idx) => t.id === newQueue[idx]?.id)) {
+          return prev;
+        }
+        return newQueue;
+      });
+    }
+    if (snap.status) {
+      setIsPlaying((prev) => (prev === (snap.status === "playing") ? prev : snap.status === "playing"));
+    }
+  }, []);
 
   // Session & WebSocket Sync
   useEffect(() => {
@@ -152,7 +181,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      // Connect WebSocket
+      // Connect WebSocket safely
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/api/sessions/${sid}/events`;
       try {
@@ -161,28 +190,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.current) {
-              const trk = mapBackendTrack(data.current);
-              setCurrentTrack((prev) => (prev?.id === trk.id ? prev : trk));
-            }
-            if (data.queue) {
-              const newQueue = data.queue.map(mapBackendTrack);
-              setQueue((prev) => {
-                if (prev.length === newQueue.length && prev.every((t, idx) => t.id === newQueue[idx]?.id)) {
-                  return prev;
-                }
-                return newQueue;
-              });
-            }
-            if (data.status) {
-              setIsPlaying((prev) => (prev === (data.status === "playing") ? prev : data.status === "playing"));
-            }
+            updateStateFromSnapshot(data);
           } catch (err) {
-            console.error("WS parse error:", err);
+            console.error("WS parse notice");
           }
         };
       } catch (err) {
-        console.warn("WebSocket connection notice:", err);
+        console.warn("WebSocket connection notice");
       }
     }
 
@@ -192,7 +206,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       active = false;
       if (wsRef.current) wsRef.current.close();
     };
-  }, []);
+  }, [updateStateFromSnapshot]);
 
   // Sync volume / muted / rate
   useEffect(() => {
@@ -220,16 +234,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const streamPath = getStreamUrl(sid, rawTrack._playback_id || currentTrack.id);
     const targetUrl = new URL(streamPath, window.location.href).href;
 
-
     if (audio.src !== targetUrl) {
       audio.src = targetUrl;
-      audio.load();
     }
 
     const playPromise = audio.play();
     if (playPromise !== undefined) {
-      playPromise.catch((error) => {
-        console.warn("Audio playback notice:", error);
+      playPromise.catch(() => {
+        // Safe promise catch preventing global exception bubbles
       });
     }
   }, [currentTrack?.id, isPlaying, sessionId]);
@@ -252,29 +264,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  }, [showLyrics, currentTrack?.id, sessionId]);
-
-  const updateStateFromSnapshot = (snap: any) => {
-    if (!snap) return;
-    if (snap.current) {
-      const trk = mapBackendTrack(snap.current);
-      setCurrentTrack((prev) => (prev?.id === trk.id ? prev : trk));
-    }
-    if (snap.queue) {
-      const newQueue = snap.queue.map(mapBackendTrack);
-      setQueue((prev) => {
-        if (prev.length === newQueue.length && prev.every((t, idx) => t.id === newQueue[idx]?.id)) {
-          return prev;
-        }
-        return newQueue;
-      });
-    }
-    if (snap.status) {
-      setIsPlaying((prev) => (prev === (snap.status === "playing") ? prev : snap.status === "playing"));
-    }
-  };
-
-  const activeSid = () => sessionIdRef.current || sessionId;
+  }, [showLyrics, currentTrack?.id, currentTrack?.title, currentTrack?.artistName, sessionId]);
 
   const next = useCallback(async () => {
     const sid = activeSid();
@@ -292,7 +282,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         lastProgressSec.current = 0;
       }
     }
-  }, [sessionId, currentTrack, queue, shuffle]);
+  }, [activeSid, currentTrack, queue, shuffle, updateStateFromSnapshot]);
 
   const prev = useCallback(async () => {
     const sid = activeSid();
@@ -316,23 +306,105 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         lastProgressSec.current = 0;
       }
     }
-  }, [sessionId, currentTrack, queue, progress]);
+  }, [activeSid, currentTrack, queue, progress, updateStateFromSnapshot]);
 
-  const playQuery = async (query: string, playNow = true) => {
+  const playTrack = useCallback((t: Track, q?: Track[]) => {
+    setCurrentTrack(t);
+    setProgress(0);
+    lastProgressSec.current = 0;
+    setIsPlaying(true);
+    if (q && q.length) setQueue(q);
+    const sid = activeSid();
+    if (sid) {
+      apiAddToQueue(sid, (t as any).web_url || t.title + " " + t.artistName, true).then(updateStateFromSnapshot);
+    }
+  }, [activeSid, updateStateFromSnapshot]);
+
+  const playQuery = useCallback(async (query: string, playNow = true) => {
     const sid = activeSid();
     if (!sid) return;
     const snap = await apiAddToQueue(sid, query, playNow);
     if (snap) updateStateFromSnapshot(snap);
-  };
+  }, [activeSid, updateStateFromSnapshot]);
 
-  const playMood = async (moodId: string, customText?: string) => {
+  const playMood = useCallback(async (moodId: string, customText?: string) => {
     const sid = activeSid();
     if (!sid) return;
     const snap = await apiPlayMood(sid, moodId, customText, true);
     if (snap) updateStateFromSnapshot(snap);
-  };
+  }, [activeSid, updateStateFromSnapshot]);
 
-  const api: PlayerApi = {
+  const togglePlay = useCallback(() => {
+    setIsPlaying((prevIsPlaying) => {
+      const nextPlaying = !prevIsPlaying;
+      const sid = activeSid();
+      if (sid) {
+        if (nextPlaying) {
+          apiResume(sid);
+        } else {
+          apiPause(sid);
+        }
+      }
+      return nextPlaying;
+    });
+  }, [activeSid]);
+
+  const seek = useCallback((s: number) => {
+    setProgress(s);
+    lastProgressSec.current = Math.floor(s);
+    if (audioRef.current) audioRef.current.currentTime = s;
+    const sid = activeSid();
+    if (sid) apiSeek(sid, Math.floor(s * 1000));
+  }, [activeSid]);
+
+  const setVolume = useCallback((v: number) => {
+    setVol(v);
+    if (v > 0) setMuted(false);
+    const sid = activeSid();
+    if (sid) apiVolume(sid, v);
+  }, [activeSid]);
+
+  const toggleMute = useCallback(() => setMuted((m) => !m), []);
+  const toggleShuffle = useCallback(() => setShuffle((s) => !s), []);
+  
+  const cycleRepeat = useCallback(() => {
+    setRepeat((prevRep) => {
+      const nextRep = prevRep === "off" ? "all" : prevRep === "all" ? "one" : "off";
+      const sid = activeSid();
+      if (sid) apiRepeat(sid, nextRep);
+      return nextRep;
+    });
+  }, [activeSid]);
+
+  const toggleLike = useCallback((id: string) => setLiked((l) => ({ ...l, [id]: !l[id] })), []);
+  
+  const toggleQueue = useCallback(() => {
+    setShowQueue((s) => !s);
+    setShowLyrics(false);
+  }, []);
+
+  const toggleLyrics = useCallback(() => {
+    setShowLyrics((s) => !s);
+    setShowQueue(false);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => setFullscreen((f) => !f), []);
+
+  const addToQueue = useCallback((t: Track) => {
+    setQueue((q) => (q.some((x) => x.id === t.id) ? q : [...q, t]));
+    const sid = activeSid();
+    if (sid) {
+      apiAddToQueue(sid, (t as any).web_url || t.title + " " + t.artistName, false).then(updateStateFromSnapshot);
+    }
+  }, [activeSid, updateStateFromSnapshot]);
+
+  const removeFromQueue = useCallback((id: string) => {
+    setQueue((q) => q.filter((t) => t.id !== id));
+    const sid = activeSid();
+    if (sid) apiRemoveFromQueue(sid, id);
+  }, [activeSid]);
+
+  const api = useMemo<PlayerApi>(() => ({
     sessionId,
     currentTrack,
     isPlaying,
@@ -348,78 +420,58 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     showLyrics,
     fullscreen,
     lyrics,
-    playTrack: (t, q) => {
-      setCurrentTrack(t);
-      setProgress(0);
-      lastProgressSec.current = 0;
-      setIsPlaying(true);
-      if (q && q.length) setQueue(q);
-      const sid = activeSid();
-      if (sid) {
-        apiAddToQueue(sid, (t as any).web_url || t.title + " " + t.artistName, true).then(updateStateFromSnapshot);
-      }
-    },
+    playTrack,
     playQuery,
-    togglePlay: () => {
-      const nextPlaying = !isPlaying;
-      setIsPlaying(nextPlaying);
-      const sid = activeSid();
-      if (sid) {
-        if (nextPlaying) {
-          apiResume(sid);
-        } else {
-          apiPause(sid);
-        }
-      }
-    },
+    togglePlay,
     next,
     prev,
-    seek: (s) => {
-      setProgress(s);
-      lastProgressSec.current = Math.floor(s);
-      if (audioRef.current) audioRef.current.currentTime = s;
-      const sid = activeSid();
-      if (sid) apiSeek(sid, Math.floor(s * 1000));
-    },
-    setVolume: (v) => {
-      setVol(v);
-      if (v > 0) setMuted(false);
-      const sid = activeSid();
-      if (sid) apiVolume(sid, v);
-    },
-    toggleMute: () => setMuted((m) => !m),
-    toggleShuffle: () => setShuffle((s) => !s),
-    cycleRepeat: () => {
-      const nextRep = repeat === "off" ? "all" : repeat === "all" ? "one" : "off";
-      setRepeat(nextRep);
-      const sid = activeSid();
-      if (sid) apiRepeat(sid, nextRep);
-    },
+    seek,
+    setVolume,
+    toggleMute,
+    toggleShuffle,
+    cycleRepeat,
     setSpeed,
-    toggleLike: (id) => setLiked((l) => ({ ...l, [id]: !l[id] })),
-    toggleQueue: () => {
-      setShowQueue((s) => !s);
-      setShowLyrics(false);
-    },
-    toggleLyrics: () => {
-      setShowLyrics((s) => !s);
-      setShowQueue(false);
-    },
-    toggleFullscreen: () => setFullscreen((f) => !f),
-    addToQueue: (t) => {
-      setQueue((q) => (q.some((x) => x.id === t.id) ? q : [...q, t]));
-      const sid = activeSid();
-      if (sid) {
-        apiAddToQueue(sid, (t as any).web_url || t.title + " " + t.artistName, false).then(updateStateFromSnapshot);
-      }
-    },
-    removeFromQueue: (id) => {
-      setQueue((q) => q.filter((t) => t.id !== id));
-      const sid = activeSid();
-      if (sid) apiRemoveFromQueue(sid, id);
-    },
+    toggleLike,
+    toggleQueue,
+    toggleLyrics,
+    toggleFullscreen,
+    addToQueue,
+    removeFromQueue,
     playMood,
-  };
+  }), [
+    sessionId,
+    currentTrack,
+    isPlaying,
+    progress,
+    volume,
+    muted,
+    shuffle,
+    repeat,
+    speed,
+    liked,
+    queue,
+    showQueue,
+    showLyrics,
+    fullscreen,
+    lyrics,
+    playTrack,
+    playQuery,
+    togglePlay,
+    next,
+    prev,
+    seek,
+    setVolume,
+    toggleMute,
+    toggleShuffle,
+    cycleRepeat,
+    toggleLike,
+    toggleQueue,
+    toggleLyrics,
+    toggleFullscreen,
+    addToQueue,
+    removeFromQueue,
+    playMood,
+  ]);
 
   return <PlayerContext.Provider value={api}>{children}</PlayerContext.Provider>;
 }
