@@ -1,0 +1,12 @@
+.env
+.cache
+.DS_Store
+venv/
+.venv/
+*.log
+*.db
+__pycache__/
+node_modules/
+dist/
+.output/
+.nitro/
