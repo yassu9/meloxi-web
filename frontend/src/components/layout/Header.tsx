@@ -1,5 +1,6 @@
+import { useState, useEffect, useRef } from "react";
 import { Search, Bell, Sun, ChevronLeft, ChevronRight, Menu } from "lucide-react";
-import { useRouter, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useRouter, useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import { useSidebar } from "@/contexts/SidebarContext";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -7,11 +8,37 @@ export function Header() {
   const router = useRouter();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const searchParams = useSearch({ strict: false }) as { q?: string };
   const { setMobileOpen } = useSidebar();
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleSearchClick = () => {
+  const [query, setQuery] = useState(searchParams?.q || "");
+
+  useEffect(() => {
+    if (typeof searchParams?.q === "string") {
+      setQuery(searchParams.q);
+    }
+  }, [searchParams?.q]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleInputChange = (val: string) => {
+    setQuery(val);
+    navigate({ to: "/search", search: { q: val }, replace: true });
+  };
+
+  const handleInputFocus = () => {
     if (pathname !== "/search") {
-      navigate({ to: "/search" });
+      navigate({ to: "/search", search: { q: query } });
     }
   };
 
@@ -26,13 +53,15 @@ export function Header() {
           <button onClick={() => router.history.forward()} className="grid size-9 place-items-center rounded-full bg-black/40 hover:bg-black/60"><ChevronRight className="size-4" /></button>
         </div>
         <div className="flex-1 max-w-xl">
-          <div onClick={handleSearchClick} className="flex items-center gap-2 rounded-full bg-surface-2/80 border border-border px-4 h-10 focus-within:border-primary/60 transition-colors cursor-pointer">
+          <div className="flex items-center gap-2 rounded-full bg-surface-2/80 border border-border px-4 h-10 focus-within:border-primary/60 transition-colors cursor-pointer">
             <Search className="size-4 text-muted-foreground shrink-0" />
             <input
-              readOnly={pathname !== "/search"}
-              onClick={handleSearchClick}
+              ref={inputRef}
+              value={query}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onFocus={handleInputFocus}
               placeholder="Search songs, artists, albums…"
-              className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground cursor-pointer"
+              className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
             />
             <kbd className="hidden md:inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">⌘K</kbd>
           </div>

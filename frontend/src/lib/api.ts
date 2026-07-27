@@ -20,7 +20,7 @@ export function mapBackendTrack(raw: any): Track {
     albumId: raw.albumId || (raw.album ? String(raw.album) : "unknown"),
     albumTitle: raw.album || raw.albumTitle || "Single",
     cover: raw.cover || raw.thumbnail || raw.image || "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80",
-    duration: typeof raw.duration === "number" ? raw.duration : 180,
+    duration: typeof raw.duration === "number" && raw.duration > 0 ? raw.duration : 180,
     liked: !!raw.liked,
     _queue_id: raw._queue_id || String(stableId),
     _playback_id: raw._playback_id,

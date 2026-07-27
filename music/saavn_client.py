@@ -165,10 +165,14 @@ class SaavnClient:
     def _format_track(self, track: Dict) -> Dict[str, Any]:
         """Normalize Saavn payload to Meloxi-friendly dict."""
         try:
-            # Duration can be in string or int
-            duration = track.get("duration")
-            try: duration = int(duration)
-            except: duration = 0
+            # Duration can be in string or int, check both top-level and more_info
+            more_info = track.get("more_info") or {}
+            duration = track.get("duration") or more_info.get("duration")
+            try:
+                duration = int(duration)
+                if duration <= 0: duration = 180
+            except Exception:
+                duration = 180
             
             # Image fix (replace 150x150 with 500x500 for better quality)
             image = track.get("image", "")

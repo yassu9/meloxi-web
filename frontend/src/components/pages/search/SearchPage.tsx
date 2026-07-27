@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Search as SearchIcon, Loader2 } from "lucide-react";
+import { Search as SearchIcon, Loader2, X } from "lucide-react";
+import { useSearch, useNavigate } from "@tanstack/react-router";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { CardGrid, CardRow } from "@/components/cards/CardRow";
 import { MusicCard } from "@/components/cards/MusicCard";
@@ -13,11 +14,26 @@ import type { Track } from "@/types/music";
 const trending = ["Arijit Singh", "Lofi Beats", "Coldplay", "Late night jazz", "Dua Lipa", "Bollywood Top 50"];
 
 export function SearchPage() {
-  const [q, setQ] = useState("");
+  const navigate = useNavigate();
+  const searchParams = useSearch({ strict: false }) as { q?: string };
+  const initialQ = searchParams?.q || "";
+
+  const [q, setQ] = useState(initialQ);
   const [apiResults, setApiResults] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (typeof searchParams?.q === "string" && searchParams.q !== q) {
+      setQ(searchParams.q);
+    }
+  }, [searchParams?.q]);
+
   const query = q.trim();
+
+  const handleUpdateQuery = (val: string) => {
+    setQ(val);
+    navigate({ to: "/search", search: { q: val }, replace: true });
+  };
 
   useEffect(() => {
     if (!query) {
@@ -36,7 +52,7 @@ export function SearchPage() {
       } finally {
         setLoading(false);
       }
-    }, 350);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [query]);
@@ -47,7 +63,7 @@ export function SearchPage() {
   const localTracks = query ? seedTracks.filter(match) : seedTracks.slice(0, 12);
   const rawCombined = apiResults.length > 0 ? apiResults : localTracks;
 
-  // Strict deduplication by track ID to prevent React reconciliation locks
+  // Deduplicate tracks safely
   const combinedTracks = rawCombined.filter((t, index, self) =>
     index === self.findIndex((x) => x.id === t.id)
   );
@@ -60,14 +76,19 @@ export function SearchPage() {
     <PageTransition>
       <div className="mx-auto max-w-[1800px] px-4 lg:px-8 py-6 space-y-8">
         <div className="relative">
-          <div className="glass flex items-center gap-3 rounded-2xl px-5 h-14 border border-white/10 shadow-card">
+          <div className="glass flex items-center gap-3 rounded-2xl px-5 h-14 border border-white/10 shadow-card focus-within:border-primary/60 transition-colors">
             {loading ? <Loader2 className="size-5 text-primary animate-spin" /> : <SearchIcon className="size-5 text-muted-foreground" />}
             <input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => handleUpdateQuery(e.target.value)}
               placeholder="Search songs, artists, YouTube or JioSaavn links..."
               className="flex-1 bg-transparent outline-none text-base placeholder:text-muted-foreground"
             />
+            {q && (
+              <button onClick={() => handleUpdateQuery("")} className="text-muted-foreground hover:text-foreground">
+                <X className="size-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -76,7 +97,7 @@ export function SearchPage() {
             <CardRow title="Trending searches">
               <div className="flex flex-wrap gap-2">
                 {trending.map((t) => (
-                  <button key={t} onClick={() => setQ(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
+                  <button key={t} onClick={() => handleUpdateQuery(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
                     {t}
                   </button>
                 ))}
@@ -85,7 +106,7 @@ export function SearchPage() {
             <CardRow title="Top Categories">
               <div className="flex flex-wrap gap-2">
                 {["Hindi Pop", "Punjabi Wave", "EDM Dance", "Ambient Flow", "Rock Classics"].map((t) => (
-                  <button key={t} onClick={() => setQ(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
+                  <button key={t} onClick={() => handleUpdateQuery(t)} className="rounded-full bg-surface-2 border border-border px-4 py-2 text-sm hover:bg-surface-3 transition font-medium">
                     {t}
                   </button>
                 ))}
